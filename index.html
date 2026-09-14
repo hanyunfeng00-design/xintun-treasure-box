@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>幸福百宝箱物资清单</title>
+  <style>
+    :root {
+      --bg: #f7f5f1;
+      --panel: #ffffff;
+      --ink: #201c18;
+      --muted: #70675d;
+      --line: #ded6cc;
+      --green: #23745d;
+      --amber: #9b6200;
+      --red: #b3261e;
+      font-family: "Microsoft YaHei", "PingFang SC", system-ui, -apple-system, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--ink); }
+    header { padding: 22px 16px 14px; border-bottom: 1px solid var(--line); background: #fff; }
+    h1 { margin: 0 0 8px; font-size: clamp(26px, 8vw, 40px); line-height: 1.12; letter-spacing: 0; }
+    .subtitle { margin: 0; color: var(--muted); line-height: 1.6; font-size: 15px; }
+    main { display: grid; grid-template-columns: minmax(0, 1fr) 310px; gap: 16px; padding: 16px; max-width: 1180px; margin: 0 auto; }
+    section, aside { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+    .toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 12px; border-bottom: 1px solid var(--line); }
+    button { border: 1px solid var(--line); background: #fff; color: var(--ink); min-height: 38px; padding: 8px 12px; border-radius: 6px; cursor: pointer; font-size: 14px; white-space: nowrap; }
+    button.primary { background: var(--green); color: #fff; border-color: var(--green); }
+    button.warn { border-color: #e2c88f; color: var(--amber); }
+    button:disabled { opacity: 0.55; cursor: not-allowed; }
+    input { width: 100%; border: 1px solid var(--line); border-radius: 6px; min-height: 38px; padding: 7px 9px; font: inherit; background: #fff; }
+    table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    th, td { border-bottom: 1px solid var(--line); padding: 9px; text-align: left; vertical-align: top; font-size: 14px; overflow-wrap: anywhere; }
+    th { color: var(--muted); font-weight: 600; background: #fbfaf8; position: sticky; top: 0; z-index: 1; }
+    .side { padding: 14px; display: grid; align-content: start; gap: 14px; }
+    .side h2 { margin: 0; font-size: 20px; letter-spacing: 0; }
+    #qrcode { width: 238px; min-height: 238px; display: grid; place-items: center; margin: 0 auto; border: 1px dashed var(--line); border-radius: 8px; background: #fff; padding: 10px; }
+    .note { color: var(--muted); line-height: 1.65; font-size: 13px; margin: 0; }
+    .count { border: 1px solid var(--line); border-radius: 8px; padding: 12px; background: #fbfcfa; }
+    .count strong { display: block; font-size: 28px; line-height: 1.1; }
+    .status { border: 1px solid var(--line); border-radius: 8px; padding: 10px; font-size: 13px; line-height: 1.6; }
+    .status.ok { color: var(--green); background: #eef8f2; border-color: #cde8d8; }
+    .status.warn { color: var(--amber); background: #fff7e6; border-color: #f0d9a4; }
+    .status.error { color: var(--red); background: #fff0ee; border-color: #f2c7c1; }
+    .footnote { padding: 12px; border-top: 1px solid var(--line); color: var(--muted); line-height: 1.7; font-size: 14px; }
+    @media (max-width: 860px) { main { grid-template-columns: 1fr; } table { min-width: 680px; } .table-wrap { overflow-x: auto; } }
+    @media print { header, .inventory, .toolbar, #syncStatus { display: none; } main { display: block; padding: 0; } aside { border: 0; } body { background: #fff; } #qrcode { border: 0; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1 id="pageTitle">幸福百宝箱物资清单</h1>
+    <p class="subtitle">按车站分别维护。修改后点击“保存到云端”，其他手机扫码或刷新后即可看到最新内容。</p>
+  </header>
+  <main>
+    <section class="inventory">
+      <div class="toolbar">
+        <button class="primary" id="addRow" type="button">添加物资</button>
+        <button id="saveCloud" type="button">保存到云端</button>
+        <button id="reloadCloud" type="button">刷新云端数据</button>
+        <button id="exportCsv" type="button">导出 CSV</button>
+        <button class="warn" id="clearAll" type="button">清空</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 180px;">物资名称</th>
+              <th style="width: 130px;">最低保有量</th>
+              <th style="width: 300px;">备注</th>
+              <th style="width: 80px;">操作</th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+      <div class="footnote">
+        准妈妈徽章、卫生巾、红糖姜茶、暖贴及糖果最低保有量可结合实际情况修改，低于最低保有量时及时申请补充。红糖姜茶、暖贴为冬季（11月至次年3月）特定物资，其他季节可按需配置。
+      </div>
+    </section>
+    <aside class="side">
+      <h2 id="qrTitle">固定二维码</h2>
+      <div class="count"><strong id="totalCount">0</strong><span>当前物资行数</span></div>
+      <div id="syncStatus" class="status warn">正在读取云端数据...</div>
+      <div id="qrcode" aria-label="百宝箱清单入口二维码"></div>
+      <button class="primary" id="printQr" type="button">打印二维码</button>
+      <p class="note">二维码固定指向本站百宝箱清单。以后修改表格内容后只需要保存，不需要重新生成或重新打印二维码。</p>
+      <p class="note" id="qrStatus"></p>
+    </aside>
+  </main>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script>
+    const SUPABASE_URL = "https://auvptqpvvyxgtvyzkoiq.supabase.co";
+    const SUPABASE_KEY = "sb_publishable_TEEvMG0tYULue8OZ7ECL9g_EC4j3DRk";
+    const TABLE = "medical_box_data";
+    const stationNames = { xintun: "辛屯站" };
+    const params = new URLSearchParams(location.search);
+    const stationId = params.get("station") || "xintun";
+    const stationName = stationNames[stationId] || stationId;
+    const boxId = "treasure";
+    const recordKey = `${stationId}:${boxId}`;
+    const fields = ["name", "minStock", "notes"];
+    const initialItems = [
+      { name: "指甲刀套装", minStock: "1", notes: "" },
+      { name: "针线盒", minStock: "1", notes: "" },
+      { name: "老花镜", minStock: "1", notes: "一套三个不同度数" },
+      { name: "打气筒", minStock: "1", notes: "含X个打气筒针" },
+      { name: "准妈妈徽章", minStock: "3", notes: "" },
+      { name: "卫生巾", minStock: "3", notes: "有效期：XX年X月" },
+      { name: "红糖姜茶", minStock: "3", notes: "有效期：XX年X月" },
+      { name: "暖贴", minStock: "3", notes: "有效期：XX年X月" }
+    ];
+    const storageKey = `treasureBoxItems:${recordKey}`;
+    let items = JSON.parse(localStorage.getItem(storageKey) || "null") || initialItems;
+    const rows = document.querySelector("#rows");
+    const totalCount = document.querySelector("#totalCount");
+    const qrStatus = document.querySelector("#qrStatus");
+    const syncStatus = document.querySelector("#syncStatus");
+    const saveButton = document.querySelector("#saveCloud");
+    const reloadButton = document.querySelector("#reloadCloud");
+    document.querySelector("#pageTitle").textContent = `${stationName}幸福百宝箱物资清单`;
+    document.querySelector("#qrTitle").textContent = `${stationName}百宝箱固定二维码`;
+
+    function setStatus(text, type = "warn") {
+      syncStatus.textContent = text;
+      syncStatus.className = `status ${type}`;
+    }
+    function localSave() {
+      localStorage.setItem(storageKey, JSON.stringify(items));
+      totalCount.textContent = items.length;
+    }
+    function render() {
+      rows.innerHTML = "";
+      items.forEach((item, index) => {
+        const tr = document.createElement("tr");
+        fields.forEach((field) => {
+          const td = document.createElement("td");
+          const input = document.createElement("input");
+          input.type = "text";
+          input.value = item[field] || "";
+          input.addEventListener("input", () => { item[field] = input.value; localSave(); });
+          td.appendChild(input);
+          tr.appendChild(td);
+        });
+        const actionTd = document.createElement("td");
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.textContent = "删除";
+        remove.addEventListener("click", () => { items.splice(index, 1); localSave(); render(); });
+        actionTd.appendChild(remove);
+        tr.appendChild(actionTd);
+        rows.appendChild(tr);
+      });
+      localSave();
+    }
+    function apiHeaders(extra = {}) {
+      return { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json", ...extra };
+    }
+    async function loadCloud() {
+      setStatus("正在读取云端数据...", "warn");
+      try {
+        const url = `${SUPABASE_URL}/rest/v1/${TABLE}?station=eq.${encodeURIComponent(recordKey)}&select=data`;
+        const response = await fetch(url, { headers: apiHeaders() });
+        if (!response.ok) throw new Error(await response.text());
+        const records = await response.json();
+        if (records.length && Array.isArray(records[0].data?.items)) {
+          items = records[0].data.items;
+          render();
+          setStatus("已读取云端最新数据。", "ok");
+        } else {
+          render();
+          await saveCloud(true);
+          setStatus("已用纸质版清单初始化云端数据。", "ok");
+        }
+      } catch (error) {
+        render();
+        setStatus("云端读取失败，当前先显示本机数据。", "error");
+        console.error(error);
+      }
+    }
+    async function saveCloud(silent = false) {
+      if (!silent) setStatus("正在保存到云端...", "warn");
+      saveButton.disabled = true;
+      reloadButton.disabled = true;
+      try {
+        const payload = {
+          station: recordKey,
+          data: { station: stationName, box: "幸福百宝箱", items },
+          updated_at: new Date().toISOString()
+        };
+        const response = await fetch(`${SUPABASE_URL}/rest/v1/${TABLE}`, {
+          method: "POST",
+          headers: apiHeaders({ Prefer: "resolution=merge-duplicates,return=minimal" }),
+          body: JSON.stringify(payload)
+        });
+        if (!response.ok) throw new Error(await response.text());
+        localSave();
+        if (!silent) setStatus("已保存到云端，其他手机刷新后可见。", "ok");
+      } catch (error) {
+        setStatus("保存失败：请确认网络正常。", "error");
+        console.error(error);
+      } finally {
+        saveButton.disabled = false;
+        reloadButton.disabled = false;
+      }
+    }
+    function toCsv() {
+      const header = ["物资名称", "最低保有量", "备注"];
+      const lines = [header.join(",")];
+      items.forEach((item) => {
+        lines.push(fields.map((field) => {
+          const value = String(item[field] || "");
+          return /[",\n]/.test(value) ? `"${value.replaceAll('"', '""')}"` : value;
+        }).join(","));
+      });
+      return lines.join("\n");
+    }
+    function makeFixedQr() {
+      const target = document.querySelector("#qrcode");
+      const baseUrl = `${location.origin}${location.pathname}`;
+      const pageUrl = `${baseUrl}?station=${encodeURIComponent(stationId)}`;
+      target.innerHTML = "";
+      if (!window.QRCode) { qrStatus.textContent = "二维码库未加载，请刷新后再试。"; return; }
+      new QRCode(target, { text: pageUrl, width: 216, height: 216, correctLevel: QRCode.CorrectLevel.M });
+      qrStatus.textContent = `二维码地址：${pageUrl}`;
+    }
+    document.querySelector("#addRow").addEventListener("click", () => { items.push({ name: "", minStock: "", notes: "" }); localSave(); render(); });
+    saveButton.addEventListener("click", () => saveCloud(false));
+    reloadButton.addEventListener("click", loadCloud);
+    document.querySelector("#exportCsv").addEventListener("click", () => {
+      const blob = new Blob(["\ufeff" + toCsv()], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${stationName}幸福百宝箱物资清单.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+    document.querySelector("#clearAll").addEventListener("click", () => { if (confirm("确定清空当前清单？清空后需要点击保存到云端才会同步给其他手机。")) { items = []; localSave(); render(); } });
+    document.querySelector("#printQr").addEventListener("click", () => window.print());
+    render();
+    makeFixedQr();
+    loadCloud();
+  </script>
+</body>
+</html>
