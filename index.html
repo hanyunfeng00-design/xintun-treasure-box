@@ -178,26 +178,41 @@
         console.error(error);
       }
     }
+    async function fetchErrorText(response) {
+      try {
+        const text = await response.text();
+        return text || `${response.status} ${response.statusText}`;
+      } catch (error) {
+        return `${response.status} ${response.statusText}`;
+      }
+    }
     async function saveCloud(silent = false) {
       if (!silent) setStatus("正在保存到云端...", "warn");
       saveButton.disabled = true;
       reloadButton.disabled = true;
       try {
+        const lookupUrl = `${SUPABASE_URL}/rest/v1/${TABLE}?station=eq.${encodeURIComponent(recordKey)}&select=station`;
+        const lookup = await fetch(lookupUrl, { headers: apiHeaders() });
+        if (!lookup.ok) throw new Error(await fetchErrorText(lookup));
+        const exists = (await lookup.json()).length > 0;
         const payload = {
           station: recordKey,
           data: { station: stationName, box: "幸福百宝箱", items },
           updated_at: new Date().toISOString()
         };
-        const response = await fetch(`${SUPABASE_URL}/rest/v1/${TABLE}`, {
-          method: "POST",
-          headers: apiHeaders({ Prefer: "resolution=merge-duplicates,return=minimal" }),
+        const writeUrl = exists
+          ? `${SUPABASE_URL}/rest/v1/${TABLE}?station=eq.${encodeURIComponent(recordKey)}`
+          : `${SUPABASE_URL}/rest/v1/${TABLE}`;
+        const response = await fetch(writeUrl, {
+          method: exists ? "PATCH" : "POST",
+          headers: apiHeaders({ Prefer: "return=minimal" }),
           body: JSON.stringify(payload)
         });
-        if (!response.ok) throw new Error(await response.text());
+        if (!response.ok) throw new Error(await fetchErrorText(response));
         localSave();
         if (!silent) setStatus("已保存到云端，其他手机刷新后可见。", "ok");
       } catch (error) {
-        setStatus("保存失败：请确认网络正常。", "error");
+        setStatus(`保存失败：${error.message}`, "error");
         console.error(error);
       } finally {
         saveButton.disabled = false;
